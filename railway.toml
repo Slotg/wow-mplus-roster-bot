@@ -1,0 +1,10 @@
+[build]
+# Tell Railway where the Dockerfile lives
+dockerfilePath = "apps/bot/Dockerfile"
+# Build context must be the bot directory so COPY commands in the Dockerfile work
+buildContext = "apps/bot"
+
+[deploy]
+# Railway will auto-restart the bot if it crashes
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
