@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model GuildRoster {
+  guildId   String   @id
+  channelId String
+  messageId String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members RosterMember[]
+}
+
+model RosterMember {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+  updatedAt DateTime @updatedAt
+
+  roster  GuildRoster       @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+  classes RosterMemberClass[]
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+model RosterMemberClass {
+  id       String @id @default(cuid())
+  memberId String
+  wowClass String
+  role     String // Tank, Healer, or DPS
+
+  member RosterMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, wowClass, role])
+  @@index([wowClass])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  guildId     String
+  channelId   String
+  messageId   String   @unique
+  creatorId   String?
+  title       String
+  description String?
+  scheduledAt DateTime
+  createdAt   DateTime @default(now())
+
+  signups EventSignup[]
+
+  @@index([guildId])
+}
+
+model EventSignup {
+  id      String  @id @default(cuid())
+  eventId String
+  userId  String
+  role    String  // Tank | Healer | DPS
+  isBench Boolean @default(false)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+}
