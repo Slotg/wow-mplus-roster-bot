@@ -41,18 +41,23 @@ function buildEventButtons() {
 }
 
 async function refreshEventEmbed(client: Client, messageId: string) {
-    const event = await getEventByMessageId(messageId);
-    if (!event) return;
+    try {
+        const event = await getEventByMessageId(messageId);
+        if (!event) return;
 
-    const channel = await client.channels.fetch(event.channelId).catch(() => null);
-    if (!channel?.isTextBased()) return;
+        const channel = await client.channels.fetch(event.channelId).catch(() => null);
+        if (!channel?.isTextBased()) return;
 
-    const msg = await channel.messages.fetch(event.messageId).catch(() => null);
-    if (!msg) return;
+        const msg = await channel.messages.fetch(event.messageId).catch(() => null);
+        if (!msg) return;
 
-    const roster = await getRosterSnapshot(event.guildId);
-    const embed = buildEventEmbed(event, roster);
-    await msg.edit({ embeds: [embed] });
+        const roster = await getRosterSnapshot(event.guildId);
+        const embed = buildEventEmbed(event, roster);
+        await msg.edit({ embeds: [embed] });
+    } catch (error) {
+        // Log but don't rethrow — a failed embed refresh should never break the interaction
+        console.error('[refreshEventEmbed] Could not refresh embed (check bot channel permissions):', error);
+    }
 }
 
 export function registerEventHandlers(client: Client) {
