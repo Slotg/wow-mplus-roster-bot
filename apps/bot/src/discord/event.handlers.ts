@@ -57,6 +57,7 @@ async function refreshEventEmbed(client: Client, messageId: string) {
 
 export function registerEventHandlers(client: Client) {
     client.on('interactionCreate', async (interaction: Interaction) => {
+        try {
         // ---- /event create ----
         if (interaction.isChatInputCommand() && interaction.commandName === 'event') {
             const sub = interaction.options.getSubcommand();
@@ -290,6 +291,23 @@ export function registerEventHandlers(client: Client) {
                 components: [],
             });
             return;
+        }
+        } catch (error) {
+            console.error('[interactionCreate] Unhandled error:', error);
+            // Try to tell the user something went wrong
+            try {
+                const reply = { content: '❌ Something went wrong handling that interaction.', ephemeral: true };
+                if ('replied' in interaction && 'deferred' in interaction) {
+                    const i = interaction as { replied: boolean; deferred: boolean; followUp: (r: typeof reply) => Promise<unknown>; reply: (r: typeof reply) => Promise<unknown> };
+                    if (i.replied || i.deferred) {
+                        await i.followUp(reply);
+                    } else {
+                        await i.reply(reply);
+                    }
+                }
+            } catch {
+                // If we can't even reply, just swallow — console.error above is what matters
+            }
         }
     });
 }

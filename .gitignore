@@ -1,0 +1,24 @@
+# Dependencies (all levels of the monorepo)
+node_modules
+**/node_modules
+
+# Environment variables — NEVER commit these (tokens, DB passwords, API keys)
+.env
+**/.env
+.env.local
+.env.*.local
+
+# Compiled output
+dist/
+build/
+**/dist/
+**/build/
+
+# Local database files (if you ever test with SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
