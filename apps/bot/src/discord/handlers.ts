@@ -8,7 +8,7 @@ import {
     type Client,
     type Interaction,
 } from 'discord.js';
-import { WOW_CLASSES, WOW_ROLES, ROLE_CLASSES, ROLE_EMOJIS, type WowClass, type WowRole, formatRosterByPlayer } from '../roster/roster.view.js';
+import { WOW_CLASSES, WOW_ROLES, ROLE_CLASSES, ROLE_EMOJIS, type WowClass, type WowRole, buildRosterEmbed } from '../roster/roster.view.js';
 import {
     getGuildRoster,
     getRosterSnapshot,
@@ -41,13 +41,9 @@ function buildMainComponents() {
     ];
 }
 
-async function buildRosterEmbed(guildId: string) {
+async function getRosterEmbed(guildId: string) {
     const snapshot = await getRosterSnapshot(guildId);
-    const text = formatRosterByPlayer(snapshot);
-
-    return new EmbedBuilder()
-        .setTitle('M+ Roster')
-        .setDescription(text);
+    return buildRosterEmbed(snapshot);
 }
 
 export function registerHandlers(client: Client) {
@@ -66,7 +62,7 @@ export function registerHandlers(client: Client) {
 
             if (sub === 'setup') {
                 // Create the roster message in this channel and store it as the single guild roster.
-                const embed = await buildRosterEmbed(guildId);
+                const embed = await getRosterEmbed(guildId);
 
                 const msg = await interaction.reply({
                     embeds: [embed],
@@ -84,7 +80,7 @@ export function registerHandlers(client: Client) {
             }
 
             if (sub === 'show') {
-                const embed = await buildRosterEmbed(guildId);
+                const embed = await getRosterEmbed(guildId);
                 await interaction.reply({
                     embeds: [embed],
                     components: buildMainComponents(),
@@ -112,7 +108,7 @@ export function registerHandlers(client: Client) {
                     return;
                 }
 
-                const embed = await buildRosterEmbed(guildId);
+                const embed = await getRosterEmbed(guildId);
                 await msg.edit({ embeds: [embed], components: buildMainComponents() });
 
                 await interaction.reply({ content: '✅ Roster message refreshed!', ephemeral: true });
@@ -228,7 +224,7 @@ export function registerHandlers(client: Client) {
                 if (channel?.isTextBased()) {
                     const msg = await channel.messages.fetch(roster.messageId).catch(() => null);
                     if (msg) {
-                        const embed = await buildRosterEmbed(guildId);
+                        const embed = await getRosterEmbed(guildId);
                         await msg.edit({ embeds: [embed] });
                     }
                 }
@@ -264,7 +260,7 @@ export function registerHandlers(client: Client) {
                 if (channel?.isTextBased()) {
                     const msg = await channel.messages.fetch(roster.messageId).catch(() => null);
                     if (msg) {
-                        const embed = await buildRosterEmbed(guildId);
+                        const embed = await getRosterEmbed(guildId);
                         await msg.edit({ embeds: [embed] });
                     }
                 }
@@ -290,7 +286,7 @@ export function registerHandlers(client: Client) {
 
             await removeMember({ guildId, userId: interaction.user.id });
 
-            const embed = await buildRosterEmbed(guildId);
+            const embed = await getRosterEmbed(guildId);
             await interaction.update({ embeds: [embed], components: buildMainComponents() });
             return;
         }

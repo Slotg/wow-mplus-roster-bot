@@ -261,10 +261,28 @@ export function registerEventHandlers(client: Client) {
 
             const roster = await getRosterSnapshot(guildId);
             const embed = buildEventEmbed(event, roster);
+
+            // Ping all roster members so they get notified, then erase the
+            // text so the message shows only the embed (notifications already sent).
+            const rosterPings = Object.keys(roster)
+                .map((id) => `<@${id}>`)
+                .join(' ');
+
             await interaction.editReply({
                 embeds: [embed],
                 components: buildEventButtons(),
             });
+
+            // Send pings as a brand-new follow-up message — only new messages
+            // trigger real mention notifications in Discord (edits don't).
+            // Then delete it so only the embed remains.
+            if (rosterPings) {
+                const pingMsg = await interaction.followUp({
+                    content: rosterPings,
+                    fetchReply: true,
+                });
+                await pingMsg.delete().catch(() => null);
+            }
             return;
         }
 
