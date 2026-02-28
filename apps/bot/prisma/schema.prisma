@@ -31,10 +31,11 @@ model RosterMember {
 }
 
 model RosterMemberClass {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   memberId String
   wowClass String
-  role     String // Tank, Healer, or DPS
+  role     String  // Tank, Healer, or DPS
+  isMain   Boolean @default(false)
 
   member RosterMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 

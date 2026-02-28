@@ -15,6 +15,7 @@ import {
     removeMember,
     addMemberCharacter,
     removeMemberCharacter,
+    setMainCharacter,
     upsertGuildRoster,
 } from '../roster/roster.service.js';
 
@@ -24,6 +25,7 @@ export const ROSTER_REMOVE_ME_ID = 'roster_remove_me';
 export const EPHEMERAL_ROLE_SELECT_ID = 'e_roster_role_select';
 export const EPHEMERAL_CLASS_SELECT_ID = 'e_roster_class_select';
 export const EPHEMERAL_REMOVE_CHAR_SELECT_ID = 'e_roster_remove_char_select';
+export const EPHEMERAL_SET_MAIN_SELECT_ID = 'e_roster_set_main_select';
 
 function buildMainComponents() {
     const addCharBtn = new ButtonBuilder()
@@ -44,6 +46,18 @@ function buildMainComponents() {
 async function getRosterEmbed(guildId: string) {
     const snapshot = await getRosterSnapshot(guildId);
     return buildRosterEmbed(snapshot);
+}
+
+/** Pushes the updated embed back to the persistent roster message, if one exists. */
+async function refreshRosterMessage(client: Client, guildId: string) {
+    const roster = await getGuildRoster(guildId);
+    if (!roster) return;
+    const channel = await client.channels.fetch(roster.channelId).catch(() => null);
+    if (!channel?.isTextBased()) return;
+    const msg = await channel.messages.fetch(roster.messageId).catch(() => null);
+    if (!msg) return;
+    const embed = await getRosterEmbed(guildId);
+    await msg.edit({ embeds: [embed], components: buildMainComponents() });
 }
 
 export function registerHandlers(client: Client) {
@@ -118,7 +132,7 @@ export function registerHandlers(client: Client) {
             return;
         }
 
-        // ---- Button: "Add/Edit Character" (Show ephemeral Role select & Character remove) ----
+        // ---- Button: "Add/Edit Character" ----
         if (interaction.isButton() && interaction.customId === ROSTER_ADD_CHAR_ID) {
             const guildId = interaction.guildId;
             if (!guildId) return;
@@ -150,7 +164,7 @@ export function registerHandlers(client: Client) {
                 new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(roleMenu)
             ];
 
-            // If user has characters, show the removal menu too
+            // If user has characters, show the removal menu and set-main menu
             if (userCharacters.length > 0) {
                 const removeMenu = new StringSelectMenuBuilder()
                     .setCustomId(EPHEMERAL_REMOVE_CHAR_SELECT_ID)
@@ -160,12 +174,30 @@ export function registerHandlers(client: Client) {
                     .addOptions(
                         userCharacters.map((c) =>
                             new StringSelectMenuOptionBuilder()
-                                .setLabel(`${c.role} ${c.wowClass}`)
-                                .setValue(`${c.role}:${c.wowClass}`) // pack role+class into value
+                                .setLabel(`${c.role} ${c.wowClass}${c.isMain ? ' ★' : ''}`)
+                                .setValue(`${c.role}:${c.wowClass}`)
                                 .setEmoji(ROLE_EMOJIS[c.role])
                         )
                     );
                 components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(removeMenu));
+
+                // Only show "Set Main" if the user has more than one character
+                if (userCharacters.length > 1) {
+                    const setMainMenu = new StringSelectMenuBuilder()
+                        .setCustomId(EPHEMERAL_SET_MAIN_SELECT_ID)
+                        .setPlaceholder('Set a character as your Main ★...')
+                        .setMinValues(1)
+                        .setMaxValues(1)
+                        .addOptions(
+                            userCharacters.map((c) =>
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(`${c.role} ${c.wowClass}${c.isMain ? ' ★ (current main)' : ''}`)
+                                    .setValue(`${c.role}:${c.wowClass}`)
+                                    .setEmoji(ROLE_EMOJIS[c.role])
+                            )
+                        );
+                    components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(setMainMenu));
+                }
             }
 
             await interaction.reply({
@@ -217,21 +249,62 @@ export function registerHandlers(client: Client) {
                 wowClass,
             });
 
-            // Update the main roster embed
-            const roster = await getGuildRoster(guildId);
-            if (roster) {
-                const channel = await client.channels.fetch(roster.channelId);
-                if (channel?.isTextBased()) {
-                    const msg = await channel.messages.fetch(roster.messageId).catch(() => null);
-                    if (msg) {
-                        const embed = await getRosterEmbed(guildId);
-                        await msg.edit({ embeds: [embed] });
-                    }
-                }
+            await refreshRosterMessage(client, guildId);
+
+            // Check how many classes this user now has — if more than 1, prompt to set main
+            const snapshot = await getRosterSnapshot(guildId);
+            const userChars = snapshot[interaction.user.id] ?? [];
+            const currentMain = userChars.find((c) => c.isMain);
+
+            if (userChars.length > 1) {
+                // Offer a "set as main" prompt
+                const setMainMenu = new StringSelectMenuBuilder()
+                    .setCustomId(EPHEMERAL_SET_MAIN_SELECT_ID)
+                    .setPlaceholder('Set a character as your Main ★...')
+                    .setMinValues(1)
+                    .setMaxValues(1)
+                    .addOptions(
+                        userChars.map((c) =>
+                            new StringSelectMenuOptionBuilder()
+                                .setLabel(`${c.role} ${c.wowClass}${c.isMain ? ' ★ (current main)' : ''}`)
+                                .setValue(`${c.role}:${c.wowClass}`)
+                                .setEmoji(ROLE_EMOJIS[c.role])
+                        )
+                    );
+
+                await interaction.update({
+                    content: `✅ Added ${ROLE_EMOJIS[role]} **${role} — ${wowClass}**! Your current main is **${currentMain ? `${currentMain.role} ${currentMain.wowClass}` : 'not set'}**. Want to change it?`,
+                    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(setMainMenu)],
+                });
+            } else {
+                await interaction.update({
+                    content: `✅ Added ${ROLE_EMOJIS[role]} **${role} — ${wowClass}** to the roster! (Auto-set as your ★ Main)`,
+                    components: [],
+                });
             }
+            return;
+        }
+
+        // ---- Ephemeral Select: Set Main character ----
+        if (interaction.isStringSelectMenu() && interaction.customId === EPHEMERAL_SET_MAIN_SELECT_ID) {
+            const guildId = interaction.guildId;
+            if (!guildId) return;
+
+            const [roleStr, wowClassStr] = interaction.values[0].split(':');
+            const role = roleStr as WowRole;
+            const wowClass = wowClassStr as WowClass;
+
+            await setMainCharacter({
+                guildId,
+                userId: interaction.user.id,
+                role,
+                wowClass,
+            });
+
+            await refreshRosterMessage(client, guildId);
 
             await interaction.update({
-                content: `Successfully added ${ROLE_EMOJIS[role]} **${role} - ${wowClass}** to the roster!`,
+                content: `★ **${role} — ${wowClass}** is now your Main character!`,
                 components: [],
             });
             return;
@@ -253,21 +326,10 @@ export function registerHandlers(client: Client) {
                 wowClass,
             });
 
-            // Update main embed
-            const roster = await getGuildRoster(guildId);
-            if (roster) {
-                const channel = await client.channels.fetch(roster.channelId);
-                if (channel?.isTextBased()) {
-                    const msg = await channel.messages.fetch(roster.messageId).catch(() => null);
-                    if (msg) {
-                        const embed = await getRosterEmbed(guildId);
-                        await msg.edit({ embeds: [embed] });
-                    }
-                }
-            }
+            await refreshRosterMessage(client, guildId);
 
             await interaction.update({
-                content: `Successfully removed ${ROLE_EMOJIS[role]} **${role} - ${wowClass}** from your roster.`,
+                content: `Removed ${ROLE_EMOJIS[role]} **${role} — ${wowClass}** from your roster.`,
                 components: [],
             });
             return;

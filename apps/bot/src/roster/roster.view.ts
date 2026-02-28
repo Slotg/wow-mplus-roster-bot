@@ -47,7 +47,7 @@ export const ROLE_CLASSES: Record<WowRole, WowClass[]> = {
     ],
 };
 
-export type PlayerCharacter = { role: WowRole; wowClass: WowClass };
+export type PlayerCharacter = { role: WowRole; wowClass: WowClass; isMain: boolean };
 
 /** Same gold as the event embeds */
 export const ROSTER_HEADER_COLOR = 0xC69B3A;
@@ -55,6 +55,7 @@ export const ROSTER_HEADER_COLOR = 0xC69B3A;
 /**
  * Builds a single gold embed with one block-quote section per role.
  * Users appear under each role they registered for.
+ * The main class is displayed in bold; others are plain.
  */
 export function buildRosterEmbed(perUser: Record<string, PlayerCharacter[]>): EmbedBuilder {
     const entries = Object.entries(perUser);
@@ -65,30 +66,39 @@ export function buildRosterEmbed(perUser: Record<string, PlayerCharacter[]>): Em
         description = '_No one on the roster yet._';
     } else {
         const sections = WOW_ROLES.map((role) => {
-            // Group classes per user for this role
-            const userClasses = new Map<string, WowClass[]>();
+            // Group characters per user for this role, keyed by userId
+            const userChars = new Map<string, PlayerCharacter[]>();
 
             for (const [userId, characters] of entries) {
                 for (const c of characters) {
                     if (c.role === role) {
-                        if (!userClasses.has(userId)) userClasses.set(userId, []);
-                        userClasses.get(userId)!.push(c.wowClass);
+                        if (!userChars.has(userId)) userChars.set(userId, []);
+                        userChars.get(userId)!.push(c);
                     }
                 }
             }
 
-            // Build sorted list: sort by first class name, then userId
-            const grouped = [...userClasses.entries()].map(([userId, classes]) => ({
-                userId,
-                classes: classes.sort((a, b) => a.localeCompare(b)),
-            }));
+            // Build sorted list: main first, then alphabetical; sort entries by main class name
+            const grouped = [...userChars.entries()].map(([userId, chars]) => {
+                // Sort: main first, then alphabetical
+                const sorted = [...chars].sort((a, b) => {
+                    if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
+                    return a.wowClass.localeCompare(b.wowClass);
+                });
+                return { userId, chars: sorted };
+            });
             grouped.sort((a, b) =>
-                a.classes[0].localeCompare(b.classes[0]) || a.userId.localeCompare(b.userId)
+                a.chars[0].wowClass.localeCompare(b.chars[0].wowClass) || a.userId.localeCompare(b.userId)
             );
 
             const header = `${ROLE_EMOJIS[role]} **${role}** (${grouped.length})`;
             const lines = grouped.length > 0
-                ? grouped.map((e) => `> <@${e.userId}> — ${e.classes.join(', ')}`).join('\n')
+                ? grouped.map((e) => {
+                    const classDisplay = e.chars.map((c) =>
+                        c.isMain ? `**${c.wowClass}**` : c.wowClass
+                    ).join(', ');
+                    return `> <@${e.userId}> — ${classDisplay}`;
+                }).join('\n')
                 : '> _—_';
 
             return `${header}\n${lines}`;
