@@ -65,23 +65,30 @@ export function buildRosterEmbed(perUser: Record<string, PlayerCharacter[]>): Em
         description = '_No one on the roster yet._';
     } else {
         const sections = WOW_ROLES.map((role) => {
-            const roleEntries: { userId: string; wowClass: WowClass }[] = [];
+            // Group classes per user for this role
+            const userClasses = new Map<string, WowClass[]>();
 
             for (const [userId, characters] of entries) {
                 for (const c of characters) {
                     if (c.role === role) {
-                        roleEntries.push({ userId, wowClass: c.wowClass });
+                        if (!userClasses.has(userId)) userClasses.set(userId, []);
+                        userClasses.get(userId)!.push(c.wowClass);
                     }
                 }
             }
 
-            roleEntries.sort((a, b) =>
-                a.wowClass.localeCompare(b.wowClass) || a.userId.localeCompare(b.userId)
+            // Build sorted list: sort by first class name, then userId
+            const grouped = [...userClasses.entries()].map(([userId, classes]) => ({
+                userId,
+                classes: classes.sort((a, b) => a.localeCompare(b)),
+            }));
+            grouped.sort((a, b) =>
+                a.classes[0].localeCompare(b.classes[0]) || a.userId.localeCompare(b.userId)
             );
 
-            const header = `${ROLE_EMOJIS[role]} **${role}** (${roleEntries.length})`;
-            const lines = roleEntries.length > 0
-                ? roleEntries.map((e) => `> <@${e.userId}> — ${e.wowClass}`).join('\n')
+            const header = `${ROLE_EMOJIS[role]} **${role}** (${grouped.length})`;
+            const lines = grouped.length > 0
+                ? grouped.map((e) => `> <@${e.userId}> — ${e.classes.join(', ')}`).join('\n')
                 : '> _—_';
 
             return `${header}\n${lines}`;
